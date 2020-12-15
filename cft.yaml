@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'CFT for Cost and Usage Reporting lambda'
+
+Parameters: 
+  BucketName: 
+    Description: Name of the reports bucket
+    Default : output-bucket-name
+    Type: String
+  CustomerName: 
+    Description: Customer or organization name/id
+    Type: String
+  
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Ref BucketName
+      AccessControl: BucketOwnerFullControl
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  Role:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: 'ce-lambda'
+        AssumeRolePolicyDocument: 
+          Version: 2012-10-17
+          Statement: 
+            - Effect: Allow
+              Principal: 
+                Service: 
+                  - lambda.amazonaws.com
+              Action: 
+                - "sts:AssumeRole"
+        Path: "/"
+        Policies:
+        - PolicyName: 'ce-lambda'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: 
+                - ce:GetCostAndUsage
+                - ec2:DescribeRegions
+                Resource: '*'
+              - Effect: Deny
+                Action: 
+                - ce:GetPreferences
+                Resource: '*'
+              - Effect: Allow
+                Action: 
+                - s3:PutObjectAcl
+                - s3:PutObject
+                Resource: !Sub 'arn:aws:s3:::${BucketName}/*'
+              - Effect: Allow
+                Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                Resource: '*'
+   
+  CostExLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.handler
+      Runtime: python3.8
+      CodeUri: s3://[zipped location of python script]
+      Description: function for Cost and Usage Reporting
+      MemorySize: 1024
+      Timeout: 600
+      Role: !GetAtt 'Role.Arn'
+      Environment:
+        Variables:
+          s3_bucket: !Ref BucketName
+          customer_name: !Ref CustomerName
